@@ -1,38 +1,66 @@
-version: "3.8"
+version: "3.7"
+
 services:
-  web:
-    build: ./frontend
+  visualizer:
+    image: bretfisher/visualizer
+    ports:
+    - 2000:8080
+    stop_grace_period: 1m30s
+    networks:
+    - network-frontend1
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+  api:
+    image: registry.local.com:5000/backend
+    environment:
+      - CONNECTION_STRING=postgres://demo_user:demo_user@db/demo_db
+    depends_on:
+      - db
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 2
+      restart_policy:
+        condition: on-failure
+    networks:
+      - network-backend1
+      - network-frontend1
+
+  webapp:
+    image: registry.local.com:5000/frontend
+    environment:
+      - API_URL=http://api:3001/data
     depends_on:
       - api
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 2
+      restart_policy:
+        condition: on-failure
+
     ports:
       - "3000:3000"
     networks:
-      - network-backend
-  api:
-    build: ./backend
-    depends_on:
-      - mongo
-    ports:
-      - "3001:3001"
-    networks: 
-     - network-backend
-  
-  mongo:
-    image: mongo
-    restart: always
-    volumes: 
-      - mongodb_data:/data/db
-    environment: 
-      MONGODB_INITDB_ROOT_USERNAME: username
-      MONGODB_INITDB_ROOT_PASSWORD: password
-    # uncomment following lines to access db locally
-    # ports:
-    #   - 27017:27017
-    networks: 
-     - network-backend
+      - network-frontend1
+
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: demo_user
+      POSTGRES_PASSWORD: demo_user
+      POSTGRES_DB: demo_db
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    volumes:
+      - ./init_sql_scripts/:/docker-entrypoint-initdb.d
+    networks:
+      - network-backend1
 
 networks:
-  network-backend:
-
-volumes: 
-  mongodb_data:
+  network-backend1:
+  network-frontend1:
